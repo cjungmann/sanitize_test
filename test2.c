@@ -47,10 +47,10 @@ void free_array(char **array, int len)
 void copy_arrays(const char **target, int target_len, const char **source, int source_len)
 {
    const char **tptr = target;
-   const char **tend = target + target_len;
+   const char **tend = tptr + target_len;
 
    const char **sptr = source;
-   const char **send = source + source_len;
+   const char **send = sptr + source_len;
 
    while (tptr < tend && sptr < send)
    {
@@ -68,7 +68,44 @@ void copy_arrays(const char **target, int target_len, const char **source, int s
    }
 }
 
-int return_copied_array(const char ***array, int *len)
+int return_copied_array_local_populate(const char ***array, int *len)
+{
+   const char **arr = (const char**)malloc(Len_SArray * sizeof(char*));
+   if (arr)
+   {
+      null_init_strings_array(arr, Len_SArray);
+
+      const char **tptr = arr;
+      const char **tend = tptr + Len_SArray;;
+
+      const char **sptr = SArray;
+      const char **send = sptr + Len_SArray;
+
+      while (tptr < tend && sptr < send)
+      {
+         int slen = strlen(*sptr);
+         char *buff = (char*)malloc(slen+1);
+         if (buff)
+         {
+            memcpy(buff, *sptr, slen);
+            buff[slen] = '\0';
+            *tptr = buff;
+         }
+
+         ++tptr;
+         ++sptr;
+      }
+
+      *array = arr;
+      *len = Len_SArray;
+
+      return 1;
+   }
+
+   return 0;
+}
+
+int return_copied_array_called_populate(const char ***array, int *len)
 {
    const char **arr = (const char**)malloc(Len_SArray * sizeof(char*));
    if (arr)
@@ -97,10 +134,10 @@ void assign_method_one(void)
           "local code to malloc-copy-assign source strings.\n");
 
    char **tptr = array;
-   char **tend = array + len;
+   char **tend = tptr + len;
 
    const char **sptr = SArray;
-   const char **send = SArray + Len_SArray;
+   const char **send = sptr + Len_SArray;
 
    while (tptr < tend && sptr < send)
    {
@@ -116,9 +153,6 @@ void assign_method_one(void)
       ++tptr;
       ++sptr;
    }
-
-   free_array(array, len);
-   free(array);
 }
 
 /**
@@ -145,10 +179,10 @@ void assign_method_two(void)
 void assign_method_three(const char **array, int len)
 {
    const char **tptr = array;
-   const char **tend = array + len;
+   const char **tend = tptr + len;
 
    const char **sptr = SArray;
-   const char **send = SArray + Len_SArray;
+   const char **send = sptr + Len_SArray;
 
    printf("Calling function-malloced target array, "
           "local code to malloc-copy-assign source strings.\n");
@@ -185,14 +219,51 @@ void assign_method_four(const char **array, int len)
    copy_arrays(array, len, SArray, Len_SArray);
 }
 
+/**
+ * @brief Call function that returns populated char** to char*** argument.
+ *
+ * This function this function calls does all of the mallocs in one
+ * stack frame to copy the one unique characteristic of @ref assign_method_one.
+ *
+ * Sadly, depending on your objectives, this function results in
+ * memory leak warnings.  Not a match to @ref assign_method_one.e
+ */
 void assign_method_five(void)
 {
    const char **array;
    int len;
-   if (return_copied_array(&array, &len))
+
+   printf("Calling function-malloced target array, "
+          "assigning malloc-ed values to elements in same stack frame.\n");
+
+   if (return_copied_array_local_populate(&array, &len))
    {
       const char **ptr = array;
-      const char **end = array + len;
+      const char **end = ptr + len;
+
+      while (ptr < end)
+      {
+         printf("%s\n", *ptr);
+         ++ptr;
+      }
+   }
+}
+
+/**
+ * @brief For completion, sets array values to memory malloc-ed in a called function.
+ */
+void assign_method_six(void)
+{
+   const char **array;
+   int len;
+
+   printf("Calling function-malloced target array, "
+          "assigning malloc-ed values to elements in called stack frame.\n");
+
+   if (return_copied_array_called_populate(&array, &len))
+   {
+      const char **ptr = array;
+      const char **end = ptr + len;
 
       while (ptr < end)
       {
@@ -204,22 +275,69 @@ void assign_method_five(void)
 
 
 
-
 int main(int argc, const char **argv)
 {
-   assign_method_one();
+   const char **ptr = argv;
+   const char **end = ptr + argc;
 
-   // assign_method_two();
+   int len_array = 0;
+   const char **array = NULL;
 
-   // int len_array = 8;
-   // const char **array = (const char **)malloc( len_array * sizeof(const char*));
-   // assign_method_three(array, len_array);
+   const char methods[] = "123456";
+   int flag_count = sizeof(methods) + 1; // Include unused 0th position to make space
+                                         // all the numbers in the methods[] string.
+   char *flags = (char*)malloc(flag_count);
+   memset(flags, 0, flag_count);
 
-   // int len_array2 = 10;
-   // const char **array2 = (const char **)malloc( len_array2 * sizeof(const char*));
-   // assign_method_four(array2, len_array2);
+   while (ptr < end)
+   {
+      char *selection = strchr(methods, (int)**ptr);
+      if (selection)
+      {
+         int ndx = *selection - '0';
+         if (flags[ndx] == 0)
+         {
+            printf("About to run method #%d.\n", ndx);
+            switch(ndx)
+            {
+               case 1:
+                  assign_method_one();
+                  break;
+               case 2:
+                  assign_method_two();
+                  break;
+               case 3:
+                  len_array = 8;
+                  array = (const char **)malloc( len_array * sizeof(const char*));
+                  assign_method_three(array, len_array);
+                  array = NULL;
+                  break;
+               case 4:
+                  len_array = 6;
+                  array = (const char **)malloc( len_array * sizeof(const char*));
+                  assign_method_four(array, len_array);
+                  array = NULL;
+                  break;
+               case 5:
+                  assign_method_five();
+                  break;
+               case 6:
+                  assign_method_six();
+                  break;
+            }
+         }
+         else
+            printf("Will not rerun method #%d.\n", ndx);
 
-   // assign_method_five();
+         // Prevent second run with same method
+         flags[ndx] = 1;
+      }
+      ++ptr;
+   }
+
+   // Avoid non-test-generated memory leaks
+   // free(flags);
 
    return 0;
 }
+
